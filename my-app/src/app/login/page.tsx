@@ -10,8 +10,8 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('test@gmail.com');
+  const [password, setPassword] = useState('test123');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
