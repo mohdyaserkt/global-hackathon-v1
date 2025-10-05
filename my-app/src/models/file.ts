@@ -11,6 +11,9 @@ export interface IFile extends Document {
   totalChunks?: number;
   telegramMessageIdForChunk?: number;
   uploadDate: Date;
+  parentFolderId?: Schema.Types.ObjectId; // Reference to Folder
+  isPublic: boolean;
+  publicShareToken?: string;
 }
 
 const fileSchema = new Schema<IFile>({
@@ -24,6 +27,20 @@ const fileSchema = new Schema<IFile>({
   totalChunks: { type: Number },
   telegramMessageIdForChunk: { type: Number },
   uploadDate: { type: Date, default: Date.now },
+  parentFolderId: {
+    type: Schema.Types.ObjectId,
+    ref: "Folder",
+    default: null,
+  },
+  isPublic: {
+    type: Boolean,
+    default: false,
+  },
+  publicShareToken: {
+    type: String,
+    unique: true,
+    sparse: true,
+  },
 });
 
 const File = models.File || model<IFile>("File", fileSchema);
