@@ -3,9 +3,8 @@ import { NextResponse } from 'next/server';
 import File, { IFile } from '@/models/file';
 import { connectToDatabase } from '../../../../lib/db';
 
-export async function GET(request: Request, { params }: { params: { token: string } }) {
-  const { token } = params;
-
+export async function GET(request: Request, context: { params: Promise<{ token: string }> }) {
+  const { token } = await context.params;
   try {
     await connectToDatabase();
 
@@ -14,15 +13,15 @@ export async function GET(request: Request, { params }: { params: { token: strin
       return NextResponse.json({ error: 'File not found or not public' }, { status: 404 });
     }
 
-    // Redirect to the download route using the telegramMessageId
-    // This assumes the file is a single file, not chunked. Handling chunked public files is complex.
     if (fileRecord.isChunked) {
-        return NextResponse.json({ error: 'Public access for chunked files not implemented' }, { status: 501 }); // Not Implemented
+      return NextResponse.json({ error: 'Public access for chunked files not implemented' }, { status: 501 });
     }
 
-    const downloadUrl = `/api/download/${fileRecord.telegramMessageId}`;
-    return NextResponse.redirect(downloadUrl);
+    // Build absolute URL using request URL
+    const { origin } = new URL(request.url);
+    const downloadUrl = `${origin}/api/download/${fileRecord.telegramMessageId}`;
 
+    return NextResponse.redirect(downloadUrl);
   } catch (error) {
     console.error('Public Access Error:', error);
     return NextResponse.json({ error: 'Internal Server Error during public access' }, { status: 500 });

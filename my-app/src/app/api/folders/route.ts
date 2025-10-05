@@ -18,7 +18,7 @@ export async function GET(request: Request) {
     }
 
     const folders: IFolder[] = await Folder.find(query)
-      .select('name parentId createdAt updatedAt -_id')
+      .select('name parentId createdAt updatedAt _id')
       .sort({ createdAt: 1 });
 
     return NextResponse.json({ folders });

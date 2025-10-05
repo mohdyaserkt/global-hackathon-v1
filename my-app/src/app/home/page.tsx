@@ -1,18 +1,16 @@
 // app/home/page.tsx
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import Sidebar from '@/app/components/Sidebar';
-import FileItem from '@/app/components/FileItem';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { FolderIcon, UploadIcon } from 'lucide-react';
+// ... other imports ...
+import { FolderIcon, FileIcon, ImageIcon, DownloadIcon, Copy,LinkIcon, UploadIcon } from 'lucide-react';
 import { toast } from 'sonner';
-import FolderItem from '@/app/components/FolderItem';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
-// Define chunk size (e.g., 1GB = 1073741824 bytes)
 const CHUNK_SIZE = 1073741824; // 1GB in bytes
 
 export default function HomePage() {
@@ -21,29 +19,12 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
-  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null); // null means root
-  const [newFolderName, setNewFolderName] = useState('');
-  const [showNewFolderInput, setShowNewFolderInput] = useState(false);
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [currentFolderName, setCurrentFolderName] = useState<string>('Root');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        await fetchFiles(currentFolderId);
-        await fetchFolders(currentFolderId);
-      } catch (error: any) {
-        console.error('Fetch Data Error:', error);
-        toast.error(error.message || 'Failed to load data');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [currentFolderId]); // Fetch data when current folder changes
-
-  const fetchFiles = async (folderId: string | null) => {
+  // Wrap fetch functions in useCallback
+  const fetchFiles = useCallback(async (folderId: string | null) => {
     try {
       const url = `/api/files${folderId ? `?folderId=${folderId}` : ''}`;
       const response = await fetch(url);
@@ -56,9 +37,9 @@ export default function HomePage() {
       console.error('Fetch Files Error:', error);
       toast.error(error.message || 'Failed to load files');
     }
-  };
+  }, []); // Empty dependency array
 
-  const fetchFolders = async (parentId: string | null) => {
+  const fetchFolders = useCallback(async (parentId: string | null) => {
     try {
       const url = `/api/folders${parentId ? `?parentId=${parentId}` : ''}`;
       const response = await fetch(url);
@@ -71,7 +52,35 @@ export default function HomePage() {
       console.error('Fetch Folders Error:', error);
       toast.error(error.message || 'Failed to load folders');
     }
-  };
+  }, []); // Empty dependency array
+
+  // Update main useEffect
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        await fetchFiles(currentFolderId);
+        await fetchFolders(currentFolderId);
+        if (currentFolderId) {
+          const currentFolder = folders.find(f => f._id === currentFolderId);
+          if (currentFolder) {
+             setCurrentFolderName(currentFolder.name);
+          } else {
+             setCurrentFolderName('Loading...');
+          }
+        } else {
+          setCurrentFolderName('Root');
+        }
+      } catch (error: any) {
+        console.error('Fetch Data Error:', error);
+        toast.error(error.message || 'Failed to load data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [currentFolderId, fetchFiles, fetchFolders]); // Add fetchFiles and fetchFolders, NOT folders
 
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';
@@ -100,7 +109,7 @@ export default function HomePage() {
       formData.append('uploadSessionId', uploadSessionId);
       formData.append('chunkIndex', i.toString());
       formData.append('totalChunks', totalChunks.toString());
-      formData.append('parentFolderId', parentFolderId || 'root'); // Pass parent folder ID
+      formData.append('parentFolderId', parentFolderId || 'root');
 
       try {
         const response = await fetch('/api/upload-chunk', {
@@ -132,27 +141,19 @@ export default function HomePage() {
     fetchFiles(currentFolderId); // Refresh current folder's files
   };
 
-  const handleUpload = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const fileInput = fileInputRef.current;
-    if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
-      toast.error("Please select a file.");
-      return;
-    }
-
-    // Handle multiple files
-    const filesToUpload = Array.from(fileInput.files);
-    for (const file of filesToUpload) {
-      if (file.size > 2 * 1024 * 1024 * 1024) { // > 2GB
+  // Move upload logic to a separate function
+  const performUpload = async (filesToUpload: FileList) => {
+     for (const file of Array.from(filesToUpload)) {
+      if (file.size > 2 * 1024 * 1024 * 1024) {
         console.log("File is large, using chunking logic.", file.name);
         await splitFileAndUpload(file, currentFolderId);
-      } else { // <= 2GB, use direct upload
+      } else {
         console.log("File is small, using direct upload logic.", file.name);
         try {
           setLoading(true);
           const formData = new FormData();
           formData.append('file', file);
-          formData.append('parentFolderId', currentFolderId || 'root'); // Pass parent folder ID
+          formData.append('parentFolderId', currentFolderId || 'root');
 
           const response = await fetch('/api/upload', {
             method: 'POST',
@@ -173,145 +174,215 @@ export default function HomePage() {
         }
       }
     }
-    fetchFiles(currentFolderId); // Refresh after all uploads
-    if (fileInput) fileInput.value = ''; // Clear input
+    fetchFiles(currentFolderId); // Refresh current folder's files after all uploads
+    if (fileInputRef.current) fileInputRef.current.value = ''; // Clear input
     setLoading(false);
+  };
+
+  // Handle file selection via hidden input
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+        performUpload(files).catch(error => {
+            console.error("Error in file input change handler:", error);
+            toast.error("An error occurred during upload.");
+        });
+    }
   };
 
   const handleFolderSelect = (folderId: string | null) => {
     setCurrentFolderId(folderId);
   };
 
-  const handleCreateFolder = async (parentId: string | null) => {
-    if (!newFolderName.trim()) {
-      toast.error('Folder name cannot be empty.');
-      return;
-    }
+  const handleCreateFolder = (parentId: string | null) => {
+    fetchFolders(currentFolderId);
+  };
 
-    try {
-      const response = await fetch('/api/folders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newFolderName, parentId: parentId || 'root' }), // Send 'root' if parentId is null
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create folder');
-      }
-
-      const result = await response.json();
-      toast.success(`Folder "${newFolderName}" created successfully!`);
-      setNewFolderName('');
-      setShowNewFolderInput(false);
-      // Refresh folders in the current view
-      fetchFolders(currentFolderId);
-    } catch (error: any) {
-      console.error('Create Folder Error:', error);
-      toast.error(error.message || 'An error occurred while creating the folder');
+  const handleUploadFileClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
     }
   };
 
-  const handleShareToggle = (fileId: string) => {
-    // Refetch files to get the updated share status
-    fetchFiles(currentFolderId);
+  const handleDownload = (messageId: number, filename: string, isChunked: boolean, sessionId?: string) => {
+    const downloadUrl = isChunked && sessionId ? `/api/download-combined/${sessionId}` : `/api/download/${messageId}`;
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleShareToggle = async (fileId: string) => {
+    try {
+      const response = await fetch(`/api/share/${fileId}`, {
+        method: 'PUT',
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to toggle share status');
+      }
+      const result = await response.json();
+      fetchFiles(currentFolderId);
+      toast.success(result.file.isPublic ? 'File shared publicly!' : 'File unshared.');
+    } catch (error: any) {
+      console.error('Share Toggle Error:', error);
+      toast.error(error.message || 'An error occurred while toggling share status');
+    }
+  };
+
+  const handleCopyLink = async (token: string) => {
+    if (!token) {
+      toast.error('No public link available.');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/api/public/${token}`);
+      toast.success('Public link copied to clipboard!');
+    } catch (err) {
+      console.error('Failed to copy link: ', err);
+      toast.error('Failed to copy link.');
+    }
+  };
+
+  const getFileIcon = (filename: string) => {
+    const ext = filename.split('.').pop()?.toLowerCase();
+    if (ext === 'jpg' || ext === 'jpeg' || ext === 'png' || ext === 'gif' || ext === 'webp') {
+      return <ImageIcon className="h-10 w-10 text-blue-400" />;
+    }
+    return <FileIcon className="h-10 w-10 text-gray-400" />;
   };
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-black">
+    <div className="flex py-6 h-screen"> {/* Use default shadcn dark mode background */}
       <Sidebar
         currentFolderId={currentFolderId}
         onFolderSelect={handleFolderSelect}
         onCreateFolder={handleCreateFolder}
+        onUploadFile={handleUploadFileClick}
       />
-      <div className="flex-1 p-6 overflow-auto">
-        <Card className="w-full">
-          <CardContent className="p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold">
-                {currentFolderId ? folders.find(f => f._id === currentFolderId)?.name : 'Root'}
-              </h2>
-              <div className="flex space-x-2">
-                {showNewFolderInput ? (
-                  <div className="flex items-center space-x-2">
-                    <Input
-                      type="text"
-                      placeholder="Folder name"
-                      value={newFolderName}
-                      onChange={(e) => setNewFolderName(e.target.value)}
-                      className="w-40"
-                    />
-                    <Button onClick={() => handleCreateFolder(currentFolderId)}>Create</Button>
-                    <Button variant="outline" onClick={() => setShowNewFolderInput(false)}>Cancel</Button>
-                  </div>
-                ) : (
-                  <Button variant="outline" onClick={() => setShowNewFolderInput(true)}>
-                    <FolderIcon className="mr-2 h-4 w-4" /> New Folder
-                  </Button>
-                )}
-              </div>
-            </div>
+      <div className="flex-1 px-6 overflow-auto">
+        <Card className="h-full flex flex-col"> {/* Use default shadcn Card classes */}
+          <CardHeader className="border-b">
+            <CardTitle className="text-xl">
+              {currentFolderName}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex-1 p-4 overflow-auto">
+            {/* Hidden file input - handle upload via onChange */}
+            <Input
+              id="file-upload"
+              type="file"
+              ref={fileInputRef}
+              multiple
+              onChange={handleFileInputChange} // Add the onChange handler here
+              className="hidden"
+            />
 
-            <form onSubmit={handleUpload} className="mb-6">
-              <div className="flex items-center space-x-2">
-                <Label htmlFor="file-upload" className="cursor-pointer">
-                  <div className="flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md">
-                    <UploadIcon className="mr-2 h-4 w-4" /> Upload File
-                  </div>
-                  <Input
-                    id="file-upload"
-                    type="file"
-                    ref={fileInputRef}
-                    className="hidden" // Hide the actual input
-                    multiple // Allow multiple file selection
-                    required
-                  />
-                </Label>
-              </div>
-              {isUploading && (
-                <div className="mt-2 w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+            {isUploading && (
+              <div className="mb-4">
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
                   <div
                     className="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-in-out"
                     style={{ width: `${uploadProgress || 0}%` }}
                   ></div>
                 </div>
-              )}
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                {isUploading ? `Uploading... ${uploadProgress}%` : 'Select one or more files (Max 2GB each, larger files will be chunked)'}
-              </p>
-            </form>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{uploadProgress}%</p>
+              </div>
+            )}
 
-            <div className="space-y-2">
-              <h3 className="text-lg font-semibold">Folders</h3>
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold mb-2">Folders</h3>
               {folders.length === 0 ? (
                 <p className="text-gray-500 dark:text-gray-400">No folders in this location.</p>
               ) : (
-                folders.map(folder => (
-                  <div
-                    key={folder._id}
-                    className="flex items-center p-2 border rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
-                    onClick={() => handleFolderSelect(folder._id)}
-                  >
-                    <FolderIcon className="h-4 w-4 mr-2" />
-                    <span>{folder.name}</span>
-                  </div>
-                ))
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {folders.map(folder => (
+                    <div
+                      key={folder._id}
+                      className="flex flex-col items-center p-4 border rounded-lg cursor-pointer hover:bg-accent" // Use shadcn's hover:bg-accent
+                      onClick={() => handleFolderSelect(folder._id)}
+                    >
+                      <FolderIcon className="h-12 w-12 mb-2" />
+                      <span className="text-sm truncate max-w-full text-center">{folder.name}</span>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
 
-            <div className="mt-6 space-y-2">
-              <h3 className="text-lg font-semibold">Files</h3>
+            <div>
+              <h3 className="text-lg font-semibold mb-2">Files</h3>
               {files.length === 0 ? (
                 <p className="text-gray-500 dark:text-gray-400">No files in this location.</p>
               ) : (
-                files.map((file) => (
-                  <FileItem
-                    key={file._id}
-                    file={file}
-                    onShareToggle={handleShareToggle}
-                    currentFolderId={currentFolderId}
-                  />
-                ))
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                  {files.map((file) => (
+                    <div key={file._id} className="border rounded-lg p-3 flex flex-col items-center bg-muted/50 hover:bg-muted"> {/* Use shadcn's bg-muted */}
+                      <div className="mb-2">
+                        {getFileIcon(file.originalFilename)}
+                      </div>
+                      <div className="text-xs text-center truncate max-w-full mb-1">{file.originalFilename}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">{formatFileSize(file.originalFileSize)}</div>
+                      <div className="flex space-x-1">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleDownload(file.telegramMessageId, file.originalFilename, file.isChunked, file.uploadSessionId)}
+                                className="h-8 w-8 p-0"
+                              >
+                                <DownloadIcon className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Download</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleShareToggle(file._id)}
+                                className="h-8 w-8 p-0"
+                              >
+                                <LinkIcon className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>{file.isPublic ? 'Unshare' : 'Share'}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        {file.isPublic && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleCopyLink(file.publicShareToken)}
+                                  className="h-8 w-8 p-0"
+                                >
+                                  <Copy className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Copy Link</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </CardContent>

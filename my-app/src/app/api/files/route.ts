@@ -19,7 +19,7 @@ export async function GET(request: Request) {
     }
 
     const files: IFile[] = await File.find(query)
-      .select('originalFilename originalFileSize uploadDate telegramMessageId parentFolderId isPublic publicShareToken -_id')
+      .select('originalFilename originalFileSize uploadDate telegramMessageId parentFolderId isPublic publicShareToken _id')
       .sort({ uploadDate: -1 });
 
     return NextResponse.json({ files });
