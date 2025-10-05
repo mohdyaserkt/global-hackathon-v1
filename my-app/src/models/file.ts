@@ -10,10 +10,12 @@ export interface IFile extends Document {
   chunkIndex?: number;
   totalChunks?: number;
   telegramMessageIdForChunk?: number;
+  telegramFileIdForChunk?: string;
   uploadDate: Date;
   parentFolderId?: Schema.Types.ObjectId; // Reference to Folder
   isPublic: boolean;
   publicShareToken?: string;
+   totalFileSize?: number; // Add this field
 }
 
 const fileSchema = new Schema<IFile>({
@@ -26,12 +28,15 @@ const fileSchema = new Schema<IFile>({
   chunkIndex: { type: Number },
   totalChunks: { type: Number },
   telegramMessageIdForChunk: { type: Number },
+  telegramFileIdForChunk: { type: String},
   uploadDate: { type: Date, default: Date.now },
   parentFolderId: {
     type: Schema.Types.ObjectId,
     ref: "Folder",
     default: null,
   },
+  totalFileSize: { // Add the new field
+    type: Number},
   isPublic: {
     type: Boolean,
     default: false,

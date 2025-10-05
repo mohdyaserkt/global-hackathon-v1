@@ -4,8 +4,8 @@ import { connectToDatabase } from '../../../../lib/db';
 import File, { IFile } from '@/models/file'; // Import model to verify file exists
 
 
-export async function GET(request: Request, { params }: { params: { sessionId: string } }) {
-  const { sessionId } = params;
+export async function GET(request: Request, context: { params: Promise<{ sessionId: string }> }) {
+  const { sessionId } = await context.params;
 
   try {
     await connectToDatabase();
@@ -15,7 +15,7 @@ export async function GET(request: Request, { params }: { params: { sessionId: s
       uploadSessionId: sessionId,
       isChunked: true,
     }).sort({ chunkIndex: 1 });
-
+ console.log(chunks,"<<<<<<")
     if (chunks.length === 0) {
       return NextResponse.json({ error: 'No chunks found for this session' }, { status: 404 });
     }
@@ -26,7 +26,7 @@ export async function GET(request: Request, { params }: { params: { sessionId: s
     // Fetch each chunk's data from Telegram and concatenate
     const chunkBuffers: Buffer[] = [];
     for (const chunk of chunks) {
-      const chunkMessageId = chunk.telegramMessageIdForChunk;
+      const chunkMessageId = chunk.telegramFileId;
       if (!chunkMessageId) {
         console.error(`Chunk ${chunk.chunkIndex} has no telegramMessageIdForChunk`);
         continue; // Or throw error

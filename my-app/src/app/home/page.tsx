@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 const CHUNK_SIZE = 1073741824; // 1GB in bytes
+// const CHUNK_SIZE = 1048576; // 1MB in bytes
 
 export default function HomePage() {
   const [files, setFiles] = useState<any[]>([]);
@@ -144,7 +145,7 @@ export default function HomePage() {
   // Move upload logic to a separate function
   const performUpload = async (filesToUpload: FileList) => {
      for (const file of Array.from(filesToUpload)) {
-      if (file.size > 2 * 1024 * 1024 * 1024) {
+     if (file.size > 1.5 * 1024 * 1024 * 1024){
         console.log("File is large, using chunking logic.", file.name);
         await splitFileAndUpload(file, currentFolderId);
       } else {
@@ -203,9 +204,20 @@ export default function HomePage() {
       fileInputRef.current.click();
     }
   };
+const handleDownload = (messageId: number | undefined, filename: string, isChunked: boolean, sessionId?: string) => {
+    let downloadUrl;
+    if (isChunked && sessionId) {
+      // Use the combined download route for chunked files
+      downloadUrl = `/api/download-combined/${sessionId}`;
+    } else if (!isChunked && messageId) {
+      // Use the single file download route
+      downloadUrl = `/api/download/${messageId}`;
+    } else {
+      console.error("Cannot determine download URL for file:", { messageId, isChunked, sessionId });
+      toast.error("Download URL could not be determined.");
+      return;
+    }
 
-  const handleDownload = (messageId: number, filename: string, isChunked: boolean, sessionId?: string) => {
-    const downloadUrl = isChunked && sessionId ? `/api/download-combined/${sessionId}` : `/api/download/${messageId}`;
     const link = document.createElement('a');
     link.href = downloadUrl;
     link.download = filename;
@@ -311,15 +323,14 @@ export default function HomePage() {
                 </div>
               )}
             </div>
-
-            <div>
+<div>
               <h3 className="text-lg font-semibold mb-2">Files</h3>
               {files.length === 0 ? (
                 <p className="text-gray-500 dark:text-gray-400">No files in this location.</p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                   {files.map((file) => (
-                    <div key={file._id} className="border rounded-lg p-3 flex flex-col items-center bg-muted/50 hover:bg-muted"> {/* Use shadcn's bg-muted */}
+                    <div key={file._id || file.uploadSessionId} className="border rounded-lg p-3 flex flex-col items-center bg-muted/50 hover:bg-muted">
                       <div className="mb-2">
                         {getFileIcon(file.originalFilename)}
                       </div>
@@ -332,7 +343,7 @@ export default function HomePage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => handleDownload(file.telegramMessageId, file.originalFilename, file.isChunked, file.uploadSessionId)}
+                                onClick={() => handleDownload(file.telegramMessageId, file.originalFilename, file.isChunked, file.uploadSessionId)} // Pass chunked and sessionId
                                 className="h-8 w-8 p-0"
                               >
                                 <DownloadIcon className="h-4 w-4" />
@@ -343,13 +354,14 @@ export default function HomePage() {
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
-                        <TooltipProvider>
+                        {/* Share and copy link logic remains the same, assuming isPublic/publicShareToken are stored in the first chunk */}
+                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => handleShareToggle(file._id)}
+                                onClick={() => handleShareToggle(file._id || file._idFromFirstChunk)} // Use file._id if available, otherwise a unique ID from the first chunk's doc (you might need to adjust this)
                                 className="h-8 w-8 p-0"
                               >
                                 <LinkIcon className="h-4 w-4" />
@@ -370,7 +382,7 @@ export default function HomePage() {
                                   onClick={() => handleCopyLink(file.publicShareToken)}
                                   className="h-8 w-8 p-0"
                                 >
-                                  <Copy className="h-4 w-4" />
+                                  <LinkIcon className="h-4 w-4" />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent>
@@ -385,6 +397,7 @@ export default function HomePage() {
                 </div>
               )}
             </div>
+
           </CardContent>
         </Card>
       </div>
