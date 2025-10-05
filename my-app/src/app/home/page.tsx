@@ -382,7 +382,7 @@ const handleDownload = (messageId: number | undefined, filename: string, isChunk
                                   onClick={() => handleCopyLink(file.publicShareToken)}
                                   className="h-8 w-8 p-0"
                                 >
-                                  <LinkIcon className="h-4 w-4" />
+                                  <Copy className="h-4 w-4" />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent>
